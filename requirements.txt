@@ -1,0 +1,3 @@
+beautifulsoup4>=4.12
+python-dateutil>=2.9
+publicsuffix2>=2.20191221
