@@ -19,10 +19,16 @@ Start with a Google Takeout Gmail `.mbox` file:
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-python scripts/audit_mbox_accounts.py /path/to/All\ mail\ Including\ Spam\ and\ Trash.mbox --out reports/accounts.csv --markdown reports/accounts.md
+python scripts/audit_mbox_accounts.py "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" --out reports/accounts.csv --markdown reports/accounts.md
 ```
 
-The script scans subjects, senders, and message bodies for account-related evidence such as welcome emails, email verification, password resets, login/security alerts, billing, and cancellation notices. It groups evidence by likely service domain and emits a ranked CSV/Markdown inventory.
+The script scans subjects, senders, Gmail labels, and message bodies for account-related evidence such as welcome emails, email verification, password resets, login/security alerts, billing, and cancellation notices. It groups evidence by likely service domain and emits a ranked CSV/Markdown inventory. Gmail messages labelled Spam/Trash/Bin are skipped by default to reduce phishing noise; rerun with `--include-spam-trash` when you want maximum coverage.
+
+For very large exports, first run a bounded sample:
+
+```bash
+python scripts/audit_mbox_accounts.py "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" --limit 10000 --max-body-chars 50000 --out reports/accounts-sample.csv
+```
 
 ## Output columns
 

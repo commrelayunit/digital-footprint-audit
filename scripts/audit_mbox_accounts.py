@@ -13,13 +13,13 @@ import html
 import mailbox
 import re
 import sys
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.header import decode_header, make_header
+from email.message import Message
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
 from publicsuffix2 import get_sld
@@ -71,6 +71,11 @@ NOISY_DOMAINS = {
     "amazonses.com", "mandrillapp.com", "sparkpostmail.com",
 }
 
+# Gmail Takeout writes system labels into X-Gmail-Labels. These messages are
+# useful for completeness but often include phishing/noise, so callers can skip
+# them by default and rerun with --include-spam-trash if they want full coverage.
+SPAM_TRASH_LABELS = {"spam", "trash", "bin"}
+
 URL_RE = re.compile(r"https?://[^\s<>'\"\)]+", re.I)
 
 @dataclass
@@ -79,6 +84,7 @@ class ServiceEvidence:
     evidence_types: set[str] = field(default_factory=set)
     sender_domains: set[str] = field(default_factory=set)
     linked_domains: set[str] = field(default_factory=set)
+    gmail_labels: set[str] = field(default_factory=set)
     dates: list[datetime] = field(default_factory=list)
     subjects: list[str] = field(default_factory=list)
     count: int = 0
@@ -102,6 +108,8 @@ class ServiceEvidence:
             score += 10
         if self.service_domain in NOISY_DOMAINS:
             score -= 20
+        if {label.lower() for label in self.gmail_labels} & SPAM_TRASH_LABELS:
+            score -= 10
         return max(0, min(100, score))
 
 
@@ -127,7 +135,7 @@ def normalize_domain(domain: str | None) -> str:
         return d
 
 
-def sender_domains(msg) -> set[str]:
+def sender_domains(msg: Message) -> set[str]:
     domains: set[str] = set()
     for _, addr in getaddresses([msg.get("from", ""), msg.get("reply-to", "")]):
         if "@" in addr:
@@ -135,27 +143,62 @@ def sender_domains(msg) -> set[str]:
     return {d for d in domains if d}
 
 
-def extract_text(msg, max_chars: int = 250_000) -> str:
+def gmail_labels(msg: Message) -> set[str]:
+    """Return normalized Gmail Takeout labels from X-Gmail-Labels.
+
+    Gmail's mbox export stores labels as a comma-separated header. In practice
+    values may be RFC 2047-encoded, percent-escaped, quoted, and/or repeated.
+    This parser is intentionally conservative: it is good enough for detecting
+    system labels such as Spam/Trash and for reporting label hints.
+    """
+    labels: set[str] = set()
+    for raw in msg.get_all("X-Gmail-Labels", []):
+        decoded = unquote(decode_mime(raw))
+        for part in decoded.split(","):
+            label = part.strip().strip('"')
+            if label:
+                labels.add(label)
+    return labels
+
+
+def has_spam_trash_label(labels: set[str]) -> bool:
+    return bool({label.lower() for label in labels} & SPAM_TRASH_LABELS)
+
+
+def _decode_part(part: Message) -> str:
+    payload = part.get_payload(decode=True)
+    if payload is None:
+        raw_payload = part.get_payload()
+        if isinstance(raw_payload, str):
+            return raw_payload
+        return ""
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(charset, errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
+
+
+def extract_text(msg: Message, max_chars: int = 250_000) -> str:
     chunks: list[str] = []
-    for part in msg.walk():
+    total = 0
+    parts = msg.walk() if msg.is_multipart() else [msg]
+    for part in parts:
         if part.get_content_disposition() == "attachment":
             continue
         ctype = part.get_content_type()
         if ctype not in {"text/plain", "text/html"}:
             continue
-        payload = part.get_payload(decode=True)
-        if not payload:
+        text = _decode_part(part)
+        if not text:
             continue
-        charset = part.get_content_charset() or "utf-8"
-        try:
-            text = payload.decode(charset, errors="replace")
-        except LookupError:
-            text = payload.decode("utf-8", errors="replace")
         if ctype == "text/html":
             text = BeautifulSoup(text, "html.parser").get_text(" ")
-        chunks.append(text)
-        if sum(len(c) for c in chunks) > max_chars:
+        remaining = max_chars - total
+        if remaining <= 0:
             break
+        chunks.append(text[:remaining])
+        total += min(len(text), remaining)
     return html.unescape("\n".join(chunks))[:max_chars]
 
 
@@ -200,14 +243,23 @@ def short_subject(subject: str) -> str:
     return re.sub(r"\s+", " ", subject).strip()[:160]
 
 
-def audit(mbox_path: Path, limit: int | None = None) -> dict[str, ServiceEvidence]:
+def audit(
+    mbox_path: Path,
+    limit: int | None = None,
+    *,
+    include_spam_trash: bool = False,
+    max_body_chars: int = 250_000,
+) -> dict[str, ServiceEvidence]:
     results: dict[str, ServiceEvidence] = {}
     mbox = mailbox.mbox(str(mbox_path), create=False)
     for i, msg in enumerate(mbox, start=1):
         if limit and i > limit:
             break
+        labels = gmail_labels(msg)
+        if not include_spam_trash and has_spam_trash_label(labels):
+            continue
         subject = decode_mime(msg.get("subject"))
-        body = extract_text(msg)
+        body = extract_text(msg, max_chars=max_body_chars)
         combined = f"{subject}\n{body}"
         evidence_types = classify(combined)
         if not evidence_types:
@@ -220,6 +272,7 @@ def audit(mbox_path: Path, limit: int | None = None) -> dict[str, ServiceEvidenc
         ev.evidence_types.update(evidence_types)
         ev.sender_domains.update(senders)
         ev.linked_domains.update(links)
+        ev.gmail_labels.update(labels)
         dt = parse_date(msg.get("date"))
         if dt:
             ev.dates.append(dt)
@@ -244,17 +297,22 @@ def rows(results: dict[str, ServiceEvidence]) -> list[dict[str, str | int]]:
             "example_subjects": " | ".join(ev.subjects),
             "sender_domains": ";".join(sorted(ev.sender_domains)),
             "linked_domains": ";".join(sorted(d for d in ev.linked_domains if d not in NOISY_DOMAINS)[:20]),
+            "gmail_labels": ";".join(sorted(ev.gmail_labels)[:20]),
         })
     return sorted(out, key=lambda r: (-int(r["confidence"]), -int(r["message_count"]), str(r["service_domain"])))
+
+
+def fieldnames() -> list[str]:
+    return [
+        "service_domain", "confidence", "evidence_types", "first_seen", "last_seen",
+        "message_count", "example_subjects", "sender_domains", "linked_domains", "gmail_labels",
+    ]
 
 
 def write_csv(path: Path, data: list[dict[str, str | int]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(data[0].keys()) if data else [
-            "service_domain", "confidence", "evidence_types", "first_seen", "last_seen",
-            "message_count", "example_subjects", "sender_domains", "linked_domains"
-        ])
+        writer = csv.DictWriter(f, fieldnames=fieldnames())
         writer.writeheader()
         writer.writerows(data)
 
@@ -262,11 +320,12 @@ def write_csv(path: Path, data: list[dict[str, str | int]]) -> None:
 def write_markdown(path: Path, data: list[dict[str, str | int]], top: int = 200) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# Likely account/service inventory", "", "Generated from local mbox heuristics. Review manually before acting.", ""]
-    lines.append("| service | confidence | evidence | first | last | count | examples |")
-    lines.append("|---|---:|---|---|---|---:|---|")
+    lines.append("| service | confidence | evidence | first | last | count | labels | examples |")
+    lines.append("|---|---:|---|---|---|---:|---|---|")
     for r in data[:top]:
         examples = str(r["example_subjects"]).replace("|", "\\|")
-        lines.append(f"| `{r['service_domain']}` | {r['confidence']} | {r['evidence_types']} | {r['first_seen']} | {r['last_seen']} | {r['message_count']} | {examples} |")
+        labels = str(r["gmail_labels"]).replace("|", "\\|")
+        lines.append(f"| `{r['service_domain']}` | {r['confidence']} | {r['evidence_types']} | {r['first_seen']} | {r['last_seen']} | {r['message_count']} | {labels} | {examples} |")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -276,12 +335,28 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=Path("reports/accounts.csv"), help="CSV output path")
     ap.add_argument("--markdown", type=Path, help="Optional Markdown output path")
     ap.add_argument("--limit", type=int, help="Process only first N messages for smoke testing")
+    ap.add_argument(
+        "--include-spam-trash",
+        action="store_true",
+        help="Include Gmail messages labelled Spam/Trash/Bin; default skips them to reduce phishing noise",
+    )
+    ap.add_argument(
+        "--max-body-chars",
+        type=int,
+        default=250_000,
+        help="Maximum text characters to scan per message; lower this for very large exports",
+    )
     args = ap.parse_args()
 
     if not args.mbox.exists():
         ap.error(f"mbox does not exist: {args.mbox}")
 
-    data = rows(audit(args.mbox, limit=args.limit))
+    data = rows(audit(
+        args.mbox,
+        limit=args.limit,
+        include_spam_trash=args.include_spam_trash,
+        max_body_chars=args.max_body_chars,
+    ))
     write_csv(args.out, data)
     if args.markdown:
         write_markdown(args.markdown, data)
