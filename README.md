@@ -13,6 +13,8 @@ Primary goal: help simplify a personal digital footprint by turning scattered ac
 
 ## Current workflow
 
+### Gmail / Google Takeout mbox
+
 Start with a Google Takeout Gmail `.mbox` file:
 
 ```bash
@@ -30,7 +32,19 @@ For very large exports, first run a bounded sample:
 python scripts/audit_mbox_accounts.py "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" --limit 10000 --max-body-chars 50000 --out reports/accounts-sample.csv
 ```
 
-## Output columns
+### Firefox saved passwords CSV
+
+Firefox can export saved logins as a plaintext CSV. Treat that file as highly sensitive: export only when needed, keep it outside the repo or under gitignored `exports/`, and delete it securely after producing the safe inventory.
+
+In Firefox: open Passwords / Logins, use the menu to export logins, and save the CSV locally. Then run:
+
+```bash
+python scripts/import_firefox_logins.py "/path/to/firefox-logins.csv" --out reports/firefox-logins.csv --markdown reports/firefox-logins.md
+```
+
+The importer tolerates common Firefox columns including `url`, `username`, `password`, `httpRealm`, `formActionOrigin`, `guid`, `timeCreated`, `timeLastUsed`, and `timePasswordChanged`. It normalizes service domains from URL/origin/realm fields. The `password` column is ignored and never written to outputs.
+
+## Gmail mbox output columns
 
 - `service_domain` — normalized candidate service domain
 - `confidence` — heuristic confidence, 0–100
@@ -40,6 +54,17 @@ python scripts/audit_mbox_accounts.py "/path/to/Takeout/Mail/All mail Including 
 - `example_subjects` — redacted-ish examples for manual review
 - `sender_domains` — observed sender domains
 - `linked_domains` — domains found in account-like links
+
+## Firefox login output columns
+
+- `service_domain` — normalized service domain from URL/origin/realm fields
+- `username` — login username/email from the export, if present
+- `confidence` — heuristic confidence, 0–100
+- `evidence_source` — fixed source marker, `firefox_logins_csv`
+- `login_count` / `url_count` — number of matching rows/domains grouped together
+- `source_fields` — input fields used to identify the service
+- `first_seen` / `last_used` / `password_changed` — parsed dates where Firefox supplied them
+- `related_domains` — normalized domains observed in login URL/origin/realm fields
 
 ## Recommended account triage fields
 

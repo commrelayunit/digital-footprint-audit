@@ -28,12 +28,13 @@ Build a practical inventory of accounts and decide what to keep, secure, migrate
 - Rank candidates by confidence.
 - Produce CSV + Markdown review report.
 
-## Phase 2 — Cross-check with password manager and OAuth
+## Phase 2 — Cross-check with password manager, browser logins, and OAuth
 
-- Merge password-manager domains with email-derived candidates.
+- Merge password-manager or browser saved-login domains with email-derived candidates.
+- For Firefox, export saved logins only temporarily; the CSV contains plaintext passwords. Run `scripts/import_firefox_logins.py` locally, verify the safe inventory, then delete the raw export.
 - Add OAuth-connected apps from Google/GitHub/Apple/etc.
 - Mark login method where known.
-- Identify accounts with no password-manager entry but strong email evidence.
+- Identify accounts with no password-manager/browser entry but strong email evidence.
 
 ## Phase 3 — Triage
 
