@@ -1,13 +1,26 @@
+# Python/runtime
 .venv/
 __pycache__/
 *.pyc
+
+# Private raw inputs and generated outputs.
+# Keep these out even if this repo becomes public.
 reports/
 data/
 exports/
+Takeout/
+takeout-*/
+*.zip
+*.tgz
+*.tar.gz
+*.eml
 *.mbox
 *.mbox.gz
 *.csv
 *.json
 *.sqlite
+*.sqlite3
 *.db
+
+# Local OS/editor noise
 .DS_Store

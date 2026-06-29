@@ -8,8 +8,9 @@ Primary goal: help simplify a personal digital footprint by turning scattered ac
 
 - No mailbox contents are committed.
 - No credentials, tokens, cookies, or exported passwords belong in this repo.
+- Raw exports and generated inventories belong under ignored local paths such as `exports/`, `data/`, and `reports/`; do not force-add them.
 - Scripts are designed to run locally against files you explicitly provide.
-- Outputs should be reviewed before sharing or committing; reports may contain personal account evidence.
+- Outputs should be reviewed before sharing anywhere; reports may contain personal account evidence and are private by default.
 
 ## Current workflow
 
