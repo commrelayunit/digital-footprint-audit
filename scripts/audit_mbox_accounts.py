@@ -85,6 +85,7 @@ class ServiceEvidence:
     sender_domains: set[str] = field(default_factory=set)
     linked_domains: set[str] = field(default_factory=set)
     gmail_labels: set[str] = field(default_factory=set)
+    malformed_urls: set[str] = field(default_factory=set)
     dates: list[datetime] = field(default_factory=list)
     subjects: list[str] = field(default_factory=list)
     count: int = 0
@@ -202,14 +203,21 @@ def extract_text(msg: Message, max_chars: int = 250_000) -> str:
     return html.unescape("\n".join(chunks))[:max_chars]
 
 
-def link_domains(text: str) -> set[str]:
+def link_domains(text: str) -> tuple[set[str], set[str]]:
+    """Return (valid_domains, malformed_urls)."""
     out: set[str] = set()
+    malformed: set[str] = set()
     for m in URL_RE.finditer(text):
-        host = urlparse(m.group(0)).hostname
+        raw = m.group(0)
+        try:
+            host = urlparse(raw).hostname
+        except ValueError:
+            malformed.add(raw[:200])
+            continue
         d = normalize_domain(host)
         if d:
             out.add(d)
-    return out
+    return out, malformed
 
 
 def parse_date(value: str | None) -> datetime | None:
@@ -265,7 +273,7 @@ def audit(
         if not evidence_types:
             continue
         senders = sender_domains(msg)
-        links = link_domains(combined)
+        links, malformed = link_domains(combined)
         service = choose_service_domain(senders, links)
         ev = results.setdefault(service, ServiceEvidence(service_domain=service))
         ev.count += 1
@@ -273,6 +281,7 @@ def audit(
         ev.sender_domains.update(senders)
         ev.linked_domains.update(links)
         ev.gmail_labels.update(labels)
+        ev.malformed_urls.update(malformed)
         dt = parse_date(msg.get("date"))
         if dt:
             ev.dates.append(dt)
@@ -298,6 +307,7 @@ def rows(results: dict[str, ServiceEvidence]) -> list[dict[str, str | int]]:
             "sender_domains": ";".join(sorted(ev.sender_domains)),
             "linked_domains": ";".join(sorted(d for d in ev.linked_domains if d not in NOISY_DOMAINS)[:20]),
             "gmail_labels": ";".join(sorted(ev.gmail_labels)[:20]),
+            "malformed_urls": ";".join(sorted(ev.malformed_urls)[:20]),
         })
     return sorted(out, key=lambda r: (-int(r["confidence"]), -int(r["message_count"]), str(r["service_domain"])))
 
@@ -305,7 +315,7 @@ def rows(results: dict[str, ServiceEvidence]) -> list[dict[str, str | int]]:
 def fieldnames() -> list[str]:
     return [
         "service_domain", "confidence", "evidence_types", "first_seen", "last_seen",
-        "message_count", "example_subjects", "sender_domains", "linked_domains", "gmail_labels",
+        "message_count", "example_subjects", "sender_domains", "linked_domains", "gmail_labels", "malformed_urls",
     ]
 
 
@@ -320,12 +330,13 @@ def write_csv(path: Path, data: list[dict[str, str | int]]) -> None:
 def write_markdown(path: Path, data: list[dict[str, str | int]], top: int = 200) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# Likely account/service inventory", "", "Generated from local mbox heuristics. Review manually before acting.", ""]
-    lines.append("| service | confidence | evidence | first | last | count | labels | examples |")
-    lines.append("|---|---:|---|---|---|---:|---|---|")
+    lines.append("| service | confidence | evidence | first | last | count | labels | examples | malformed_urls |")
+    lines.append("|---|---:|---|---|---|---:|---|---|---|")
     for r in data[:top]:
         examples = str(r["example_subjects"]).replace("|", "\\|")
         labels = str(r["gmail_labels"]).replace("|", "\\|")
-        lines.append(f"| `{r['service_domain']}` | {r['confidence']} | {r['evidence_types']} | {r['first_seen']} | {r['last_seen']} | {r['message_count']} | {labels} | {examples} |")
+        malformed = str(r["malformed_urls"]).replace("|", "\\|")
+        lines.append(f"| `{r['service_domain']}` | {r['confidence']} | {r['evidence_types']} | {r['first_seen']} | {r['last_seen']} | {r['message_count']} | {labels} | {examples} | {malformed} |")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
