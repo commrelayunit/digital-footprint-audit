@@ -13,6 +13,7 @@ import html
 import mailbox
 import re
 import sys
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.header import decode_header, make_header
@@ -21,8 +22,10 @@ from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 from publicsuffix2 import get_sld
+
+warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 PATTERNS: dict[str, list[re.Pattern[str]]] = {
     "welcome": [
@@ -224,7 +227,11 @@ def parse_date(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return parsedate_to_datetime(value)
+        from datetime import timezone
+        dt = parsedate_to_datetime(value)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
     except Exception:
         return None
 
