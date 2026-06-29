@@ -80,6 +80,7 @@ NOISY_DOMAINS = {
 SPAM_TRASH_LABELS = {"spam", "trash", "bin"}
 
 URL_RE = re.compile(r"https?://[^\s<>'\"\)]+", re.I)
+URL_PREFIX_RE = re.compile(r"(?i)^(https?://[^/\s<>'\"\)]+)")
 
 @dataclass
 class ServiceEvidence:
@@ -206,6 +207,15 @@ def extract_text(msg: Message, max_chars: int = 250_000) -> str:
     return html.unescape("\n".join(chunks))[:max_chars]
 
 
+def sanitize_malformed_url(raw: str) -> str:
+    """Keep a malformed URL hint without path/query/fragment secrets."""
+    without_query = re.split(r"[?#]", raw, maxsplit=1)[0]
+    match = URL_PREFIX_RE.match(without_query)
+    if match:
+        return match.group(1)[:200]
+    return without_query[:80]
+
+
 def link_domains(text: str) -> tuple[set[str], set[str]]:
     """Return (valid_domains, malformed_urls)."""
     out: set[str] = set()
@@ -215,7 +225,7 @@ def link_domains(text: str) -> tuple[set[str], set[str]]:
         try:
             host = urlparse(raw).hostname
         except ValueError:
-            malformed.add(raw[:200])
+            malformed.add(sanitize_malformed_url(raw))
             continue
         d = normalize_domain(host)
         if d:

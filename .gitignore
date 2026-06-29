@@ -11,6 +11,3 @@ exports/
 *.sqlite
 *.db
 .DS_Store
-
-#mailbox
-*.mbox
