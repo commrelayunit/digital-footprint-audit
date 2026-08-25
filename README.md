@@ -1,119 +1,191 @@
 # Digital Footprint Audit
 
-Local/offline tooling to discover likely accounts and services from exported mailboxes, browser/password-manager exports, OAuth app lists, and billing evidence.
+Local tools for building a private inventory of online accounts and reviewing
+public exposure. The workflow combines evidence you already control (mailbox
+and browser-login exports) with opt-in checks for public profiles, breach
+membership, and public name references.
 
-Primary goal: help simplify a personal digital footprint by turning scattered account traces into a reviewable inventory.
+The goal is not to prove identity automatically. It is to produce a reviewable
+list of likely accounts, stale services, public traces, and security work.
 
-## Privacy stance
+## What this does — and does not do
 
-- No mailbox contents are committed.
-- No credentials, tokens, cookies, or exported passwords belong in this repo.
-- Raw exports and generated inventories belong under ignored local paths such as `exports/`, `data/`, and `reports/`; do not force-add them.
-- Scripts are designed to run locally against files you explicitly provide.
-- Outputs should be reviewed before sharing anywhere; reports may contain personal account evidence and are private by default.
+It can:
 
-## Current workflow
+- extract likely service/account evidence from a local Gmail Takeout `.mbox`;
+- extract service domains and usernames from a Firefox saved-logins CSV without
+  exporting its password values into reports;
+- search public GitHub and OpenAlex records for supplied usernames and names;
+- optionally check an email against [Have I Been Pwned](https://haveibeenpwned.com/API/v3);
+- optionally enumerate public username profiles with [Maigret](https://github.com/soxoj/maigret)
+  and [Sherlock](https://github.com/sherlock-project/sherlock).
 
-### Public-exposure report
+It does not:
 
-The public collector accepts known usernames, names, and email addresses, then
-creates one CSV and one Markdown report. Exact username checks use the public
-GitHub API; name checks use GitHub and OpenAlex; HIBP is optional and requires
-an API key. Search-engine and Common Crawl entries are links for manual review,
-not automated queries. This avoids sending every identifier to another opaque
-search service.
+- test credentials, log in, reset passwords, or probe private account existence;
+- send raw mailbox/browser exports anywhere;
+- decide that a matching username or name belongs to a particular person.
 
-```bash
-python scripts/audit_public_exposure.py --interactive
-```
+Username reuse and common names produce false positives. Treat every public
+match as `candidate` until you verify it manually.
 
-To include username enumeration, enable it deliberately. Maigret is the broad
-collector; Sherlock is an optional second opinion. Both make requests to many
-third-party services, and a claimed username is only a candidate match.
+## Privacy and safety
 
-```bash
-python scripts/audit_public_exposure.py --interactive --maigret
-# Add Sherlock only when you want corroboration:
-python scripts/audit_public_exposure.py --interactive --maigret --sherlock
-```
+- Run this locally against data you explicitly choose.
+- Never commit reports, raw exports, API keys, cookies, tokens, or password-manager exports. The repository ignores `exports/`, `data/`, and `reports/`.
+- A Firefox login export contains plaintext passwords. Keep it briefly, outside
+  the repository or under ignored `exports/`, then delete it after checking the
+  safe derived report.
+- Maigret and Sherlock contact many third-party websites with the usernames you
+  provide. Use them deliberately and start with a bounded Maigret scan.
+- A HIBP lookup sends the supplied email address to HIBP. It is disabled unless
+  you provide `HIBP_API_KEY`.
 
-Maigret's default scope is the top 500 sites. Use a small bounded pass first:
-
-```bash
-python scripts/audit_public_exposure.py --username example_handle --maigret --maigret-top-sites 25
-# Or verify a particular service with Sherlock:
-python scripts/audit_public_exposure.py --username example_handle --sherlock --sherlock-site GitHub
-```
-
-Raw Maigret JSON and Sherlock output are retained under `reports/raw/` beside
-the generated report, which remains ignored by Git.
-
-Or pass values directly:
+## Quick start
 
 ```bash
-HIBP_API_KEY='...' python scripts/audit_public_exposure.py \
-  --username example_handle --name "Example Name" --email example@example.org
-```
-
-The HIBP key is optional. Without it, the report records that the breach check
-was not run and does not transmit the email address to HIBP.
-
-### Gmail / Google Takeout mbox
-
-Start with a Google Takeout Gmail `.mbox` file:
-
-```bash
+git clone https://github.com/commrelayunit/digital-footprint-audit.git
+cd digital-footprint-audit
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-python scripts/audit_mbox_accounts.py "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" --out reports/accounts.csv --markdown reports/accounts.md
 ```
 
-The script scans subjects, senders, Gmail labels, and message bodies for account-related evidence such as welcome emails, email verification, password resets, login/security alerts, billing, and cancellation notices. It groups evidence by likely service domain and emits a ranked CSV/Markdown inventory. Gmail messages labelled Spam/Trash/Bin are skipped by default to reduce phishing noise; rerun with `--include-spam-trash` when you want maximum coverage.
+Generated output belongs in `reports/`, which is ignored by Git.
 
-For very large exports, first run a bounded sample:
+## Recommended workflow
+
+Run the evidence lanes in this order. They answer different questions and are
+not substitutes for one another.
+
+| Stage | Input | What it reveals | Output |
+|---|---|---|---|
+| 1. Mailbox inventory | Gmail Takeout `.mbox` | account, billing, reset, verification, and cancellation evidence | `reports/accounts.csv` / `.md` |
+| 2. Browser-login inventory | Firefox saved-logins CSV | domains and usernames with saved credentials | `reports/firefox-logins.csv` / `.md` |
+| 3. Public exposure | your chosen usernames, names, emails | public profiles, public academic/code candidates, breach records, review links | `reports/public-exposure.csv` / `.md` |
+| 4. Triage | the reports above | keep, secure, export, delete, or investigate decisions | your private inventory |
+
+### 1. Discover likely accounts from Gmail Takeout
+
+Export Gmail using [Google Takeout](https://takeout.google.com/). Locate the
+Gmail `.mbox` in the downloaded archive and run:
 
 ```bash
-python scripts/audit_mbox_accounts.py "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" --limit 10000 --max-body-chars 50000 --out reports/accounts-sample.csv
+python scripts/audit_mbox_accounts.py \
+  "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" \
+  --out reports/accounts.csv \
+  --markdown reports/accounts.md
 ```
 
-### Firefox saved passwords CSV
+The collector reads message subjects, sender domains, Gmail labels, and message
+bodies for account-oriented signals: welcome emails, verification, password or
+login alerts, invoices, subscriptions, exports, cancellations, and closures.
+It groups that evidence by likely service domain and ranks it for review.
 
-Firefox can export saved logins as a plaintext CSV. Treat that file as highly sensitive: export only when needed, keep it outside the repo or under gitignored `exports/`, and delete it securely after producing the safe inventory.
-
-In Firefox: open Passwords / Logins, use the menu to export logins, and save the CSV locally. Then run:
+Spam and Trash/Bin are skipped by default to reduce phishing noise. Include
+them only when you want a more exhaustive, noisier pass:
 
 ```bash
-python scripts/import_firefox_logins.py "/path/to/firefox-logins.csv" --out reports/firefox-logins.csv --markdown reports/firefox-logins.md
+python scripts/audit_mbox_accounts.py \
+  "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" \
+  --include-spam-trash --out reports/accounts-full.csv
 ```
 
-The importer tolerates common Firefox columns including `url`, `username`, `password`, `httpRealm`, `formActionOrigin`, `guid`, `timeCreated`, `timeLastUsed`, and `timePasswordChanged`. It normalizes service domains from URL/origin/realm fields. The `password` column is ignored and never written to outputs.
+For a very large export, sample it first:
 
-## Gmail mbox output columns
+```bash
+python scripts/audit_mbox_accounts.py \
+  "/path/to/Takeout/Mail/All mail Including Spam and Trash.mbox" \
+  --limit 10000 --max-body-chars 50000 --out reports/accounts-sample.csv
+```
 
-- `service_domain` — normalized candidate service domain
-- `confidence` — heuristic confidence, 0–100
-- `evidence_types` — matched evidence classes
-- `first_seen` / `last_seen` — message date range
-- `message_count` — number of matching messages
-- `example_subjects` — redacted-ish examples for manual review
-- `sender_domains` — observed sender domains
-- `linked_domains` — domains found in account-like links
+### 2. Cross-check saved browser logins
 
-## Firefox login output columns
+Firefox can export saved logins as CSV. In Firefox, open Passwords/Logins, use
+the menu to export logins, save the file locally, then run:
 
-- `service_domain` — normalized service domain from URL/origin/realm fields
-- `username` — login username/email from the export, if present
-- `confidence` — heuristic confidence, 0–100
-- `evidence_source` — fixed source marker, `firefox_logins_csv`
-- `login_count` / `url_count` — number of matching rows/domains grouped together
-- `source_fields` — input fields used to identify the service
-- `first_seen` / `last_used` / `password_changed` — parsed dates where Firefox supplied them
-- `related_domains` — normalized domains observed in login URL/origin/realm fields
+```bash
+python scripts/import_firefox_logins.py \
+  "/path/to/firefox-logins.csv" \
+  --out reports/firefox-logins.csv \
+  --markdown reports/firefox-logins.md
+```
 
-## Recommended account triage fields
+The importer uses service URLs/origins and the username field. It deliberately
+ignores the plaintext `password` column and never writes it to output. The
+derived report is still private because usernames and account domains can be
+sensitive.
 
-After generating the inventory, track each service as:
+Other browsers and password managers are not imported directly yet. Use their
+built-in account inventory where available, or manually compare their service
+domains to the CSV reports; do not force a password export into an unsupported
+format.
+
+### 3. Check public exposure
+
+The interactive collector prompts for usernames, full names, and email
+addresses. It always performs the narrow GitHub/OpenAlex evidence checks and
+generates manual Google, Bing, and Common Crawl review links.
+
+Start with Maigret over a bounded set of sites:
+
+```bash
+python scripts/audit_public_exposure.py \
+  --interactive --maigret --maigret-top-sites 25
+```
+
+For the complete username pass, include Sherlock too:
+
+```bash
+python scripts/audit_public_exposure.py \
+  --interactive --maigret --maigret-top-sites 500 --sherlock
+```
+
+This produces:
+
+- `reports/public-exposure.csv` — one finding per row, suitable for filtering;
+- `reports/public-exposure.md` — readable, linked summary;
+- `reports/raw/maigret/` and `reports/raw/sherlock/` — raw local collector output for auditability.
+
+Maigret is the broad first collector. Sherlock overlaps with it, so it is best
+used as corroboration rather than proof. To check only selected Sherlock sites:
+
+```bash
+python scripts/audit_public_exposure.py \
+  --username example_handle --sherlock \
+  --sherlock-site GitHub --sherlock-site Reddit
+```
+
+To include HIBP breach records, set an API key only for that command:
+
+```bash
+HIBP_API_KEY='your-key' python scripts/audit_public_exposure.py \
+  --username example_handle --name "Example Name" \
+  --email example@example.org --maigret --maigret-top-sites 25 --sherlock
+```
+
+Without `HIBP_API_KEY`, the report records that HIBP was not run and does not
+send the email address to HIBP.
+
+## Reading the reports
+
+The collectors distinguish evidence from conclusions:
+
+- `confirmed` — direct source evidence, currently used for HIBP breach records;
+- `candidate` — plausible public profile or name match needing human review;
+- `no_match` — no result from that collector, not proof that no account exists;
+- `review` — a deliberately manual follow-up link;
+- `not_run` — an optional collector was not configured;
+- `error` — a source/network/tool issue; retry later or inspect the raw output.
+
+For mailbox evidence, key fields are `service_domain`, `confidence`,
+`evidence_types`, `first_seen`, `last_seen`, `message_count`, and
+`sender_domains`. For Firefox, key fields include `service_domain`, `username`,
+`confidence`, and usage dates.
+
+## Triage the resulting account inventory
+
+For each likely service, keep a private row with:
 
 - `status`: keep / delete / unknown / duplicate
 - `login_method`: password / Google OAuth / Apple / GitHub / unknown
@@ -123,4 +195,9 @@ After generating the inventory, track each service as:
 - `deleted_or_closed`: date / no
 - `notes`
 
-See `docs/plan.md` for the broader audit plan.
+Then check connected-app dashboards (Google, Apple, GitHub, Microsoft, Meta,
+and other providers), payment trails, aliases, and subscriptions. Before closing
+anything, export data if needed, confirm the account is not a recovery path,
+and record the deletion date.
+
+See [docs/plan.md](docs/plan.md) for the broader cleanup plan.
