@@ -235,4 +235,9 @@ that make deletion difficult. It can save time finding the correct setting, but
 still verify the target account and any export/recovery consequences yourself.
 It also links an [unofficial Android app on F-Droid](https://f-droid.org/en/packages/com.amanoteam.kurt/).
 
+[Your Digital Rights](https://yourdigitalrights.org/) is the complementary
+route when a service does not offer a usable deletion path: it helps people
+exercise formal data-rights requests. Keep a copy of any request, the service's
+reply, and your eventual deletion/closure date in the private inventory.
+
 See [docs/plan.md](docs/plan.md) for the broader cleanup plan.
