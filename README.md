@@ -148,6 +148,32 @@ This produces:
 - `reports/public-exposure.md` — readable, linked summary;
 - `reports/raw/maigret/` and `reports/raw/sherlock/` — raw local collector output for auditability.
 
+### 3a. Filter clear dead profile URLs
+
+Username scanners can report URLs that now return a normal `404` or `410`, a
+soft-404 page with an HTTP `200`, a CAPTCHA page, or a generic landing page.
+Run the local verifier on the existing report after a scan:
+
+```bash
+python scripts/verify_public_exposure_urls.py reports/public-exposure.csv
+```
+
+By default it rechecks only Maigret and Sherlock URLs with a descriptive
+User-Agent, no cookies, no authentication, a 10-second per-URL timeout, and
+redirect following. It never overwrites the input or raw collector output. It
+writes three companion files:
+
+- `reports/public-exposure-retained.csv` — input rows except clear `404`/`410` results;
+- `reports/public-exposure-url-audit.csv` — every checked URL with original URL,
+  final URL, HTTP status, disposition, and reason;
+- `reports/public-exposure-url-audit.md` — readable audit table.
+
+`200 OK` is deliberately **not** a verified match. Redirects, blocked `401`/
+`403`/`429` pages, CAPTCHA/interstitial pages, soft-404-like `200` pages, timeouts,
+and network failures remain explicit `ambiguous` or `error` audit rows for
+manual review. Use `--all-urls` only if you intentionally want to recheck
+other HTTP links in the report; this can include manual-search links.
+
 Maigret is the broad first collector. Sherlock overlaps with it, so it is best
 used as corroboration rather than proof. To check only selected Sherlock sites:
 
