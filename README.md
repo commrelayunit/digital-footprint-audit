@@ -14,6 +14,29 @@ Primary goal: help simplify a personal digital footprint by turning scattered ac
 
 ## Current workflow
 
+### Public-exposure report
+
+The public collector accepts known usernames, names, and email addresses, then
+creates one CSV and one Markdown report. Exact username checks use the public
+GitHub API; name checks use GitHub and OpenAlex; HIBP is optional and requires
+an API key. Search-engine and Common Crawl entries are links for manual review,
+not automated queries. This avoids sending every identifier to another opaque
+search service.
+
+```bash
+python scripts/audit_public_exposure.py --interactive
+```
+
+Or pass values directly:
+
+```bash
+HIBP_API_KEY='...' python scripts/audit_public_exposure.py \
+  --username example_handle --name "Example Name" --email example@example.org
+```
+
+The HIBP key is optional. Without it, the report records that the breach check
+was not run and does not transmit the email address to HIBP.
+
 ### Gmail / Google Takeout mbox
 
 Start with a Google Takeout Gmail `.mbox` file:
