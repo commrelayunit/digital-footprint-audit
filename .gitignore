@@ -24,3 +24,7 @@ takeout-*/
 
 # Local OS/editor noise
 .DS_Store
+.env
+exports/
+data/
+reports/
