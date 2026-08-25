@@ -1,3 +1,5 @@
 beautifulsoup4>=4.12
 python-dateutil>=2.9
 publicsuffix2>=2.20191221
+maigret>=0.6.5
+sherlock-project>=0.16.0
