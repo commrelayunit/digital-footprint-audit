@@ -38,8 +38,9 @@ match as `candidate` until you verify it manually.
   safe derived report.
 - Maigret and Sherlock contact many third-party websites with the usernames you
   provide. Use them deliberately and start with a bounded Maigret scan.
-- A HIBP lookup sends the supplied email address to HIBP. It is disabled unless
-  you provide `HIBP_API_KEY`.
+- A [Have I Been Pwned](https://haveibeenpwned.com/) lookup sends the supplied
+  email address to that service. It is disabled unless you provide
+  `HAVE_I_BEEN_PWNED_API_KEY`.
 
 ## Quick start
 
@@ -156,22 +157,24 @@ python scripts/audit_public_exposure.py \
   --sherlock-site GitHub --sherlock-site Reddit
 ```
 
-To include HIBP breach records, set an API key only for that command:
+To include [Have I Been Pwned](https://haveibeenpwned.com/API/v3) breach
+records, set an API key only for that command:
 
 ```bash
-HIBP_API_KEY='your-key' python scripts/audit_public_exposure.py \
+HAVE_I_BEEN_PWNED_API_KEY='your-key' python scripts/audit_public_exposure.py \
   --username example_handle --name "Example Name" \
   --email example@example.org --maigret --maigret-top-sites 25 --sherlock
 ```
 
-Without `HIBP_API_KEY`, the report records that HIBP was not run and does not
-send the email address to HIBP.
+Without `HAVE_I_BEEN_PWNED_API_KEY`, the report records that
+[Have I Been Pwned](https://haveibeenpwned.com/) was not run and does not send
+the email address to that service.
 
 ## Reading the reports
 
 The collectors distinguish evidence from conclusions:
 
-- `confirmed` — direct source evidence, currently used for HIBP breach records;
+- `confirmed` — direct source evidence, currently used for [Have I Been Pwned](https://haveibeenpwned.com/) breach records;
 - `candidate` — plausible public profile or name match needing human review;
 - `no_match` — no result from that collector, not proof that no account exists;
 - `review` — a deliberately manual follow-up link;
