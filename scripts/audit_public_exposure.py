@@ -12,6 +12,9 @@ import argparse
 import csv
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -22,6 +25,8 @@ from urllib.request import Request, urlopen
 
 
 USER_AGENT = "digital-footprint-audit/0.1 (local personal audit)"
+CLAIMED_STATUSES = {"claimed", "found"}
+URL_LINE = re.compile(r"^https?://\S+$")
 
 
 @dataclass
@@ -107,6 +112,66 @@ def search_links(query_type: str, query: str) -> list[Finding]:
     ]
 
 
+def collector_missing(username: str, collector: str, executable: str) -> Finding:
+    return Finding(
+        "username", username, collector, "username_scan", "not_run", "", "", "",
+        f"{executable} is not installed or not on PATH. Install project requirements first.",
+    )
+
+
+def maigret_username(username: str, raw_dir: Path, top_sites: int, timeout: int) -> list[Finding]:
+    """Run Maigret and retain its simple JSON report as auditable local evidence."""
+    if not shutil.which("maigret"):
+        return [collector_missing(username, "Maigret", "maigret")]
+    output_dir = raw_dir / "maigret"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    command = [
+        "maigret", username, "--top-sites", str(top_sites), "--timeout", str(timeout),
+        "--no-recursion", "--no-extracting", "--no-autoupdate", "--no-progressbar",
+        "--json", "simple", "--folderoutput", str(output_dir),
+    ]
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    report = output_dir / f"report_{username}_simple.json"
+    if completed.returncode or not report.exists():
+        detail = (completed.stderr or completed.stdout or "Maigret produced no report.").strip().replace("\n", " ")[:500]
+        return [Finding("username", username, "Maigret", "username_scan", "error", "", "", "", detail)]
+    try:
+        results = json.loads(report.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return [Finding("username", username, "Maigret", "username_scan", "error", "", "", "", f"Could not parse {report.name}: {exc}")]
+    findings: list[Finding] = []
+    for site_name, result in results.items():
+        status = str(result.get("status", {}).get("status", "")).lower()
+        if status not in CLAIMED_STATUSES:
+            continue
+        profile_url = result.get("url_user") or result.get("status", {}).get("url", "")
+        findings.append(Finding(
+            "username", username, "Maigret", "profile", "candidate", "medium",
+            str(site_name), str(profile_url),
+            f"Maigret status={status}; http_status={result.get('http_status', '')}; raw=maigret/{report.name}",
+        ))
+    return findings or [Finding("username", username, "Maigret", "username_scan", "no_match", "", "", "", f"No claimed profiles among the top {top_sites} sites; raw=maigret/{report.name}.")]
+
+
+def sherlock_username(username: str, raw_dir: Path, timeout: int, sites: list[str]) -> list[Finding]:
+    """Run Sherlock and normalize its URL-only current CSV output."""
+    if not shutil.which("sherlock"):
+        return [collector_missing(username, "Sherlock", "sherlock")]
+    output_dir = raw_dir / "sherlock"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = output_dir / f"{username}.csv"
+    command = ["sherlock", username, "--csv", "--output", str(report), "--timeout", str(timeout), "--no-color"]
+    for site in sites:
+        command.extend(["--site", site])
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    if completed.returncode or not report.exists():
+        detail = (completed.stderr or completed.stdout or "Sherlock produced no report.").strip().replace("\n", " ")[:500]
+        return [Finding("username", username, "Sherlock", "username_scan", "error", "", "", "", detail)]
+    urls = [line.strip() for line in report.read_text(encoding="utf-8", errors="replace").splitlines() if URL_LINE.match(line.strip())]
+    findings = [Finding("username", username, "Sherlock", "profile", "candidate", "medium", url.split("/")[2], url, f"Sherlock reported profile URL; raw=sherlock/{report.name}") for url in urls]
+    return findings or [Finding("username", username, "Sherlock", "username_scan", "no_match", "", "", "", f"No profile URLs reported; raw=sherlock/{report.name}.")]
+
+
 def prompt_values(label: str) -> list[str]:
     raw = input(f"{label} (comma-separated; blank to skip): ").strip()
     return [value.strip() for value in raw.split(",") if value.strip()]
@@ -137,6 +202,11 @@ def main() -> int:
     parser.add_argument("--name", action="append", default=[], help="Full name; repeatable")
     parser.add_argument("--email", action="append", default=[], help="Email to check with HIBP when configured; repeatable")
     parser.add_argument("--interactive", action="store_true", help="Prompt for identifiers")
+    parser.add_argument("--maigret", action="store_true", help="Run Maigret username scanning (makes requests to third-party services)")
+    parser.add_argument("--sherlock", action="store_true", help="Run Sherlock as an additional username verifier (many third-party requests)")
+    parser.add_argument("--sherlock-site", action="append", default=[], help="Restrict Sherlock to a site; repeatable")
+    parser.add_argument("--maigret-top-sites", type=int, default=500, help="Maigret scope when --maigret is enabled (default: 500)")
+    parser.add_argument("--scan-timeout", type=int, default=20, help="Per-site timeout for Maigret/Sherlock, in seconds (default: 20)")
     parser.add_argument("--out", type=Path, default=Path("reports/public-exposure.csv"))
     parser.add_argument("--markdown", type=Path, default=Path("reports/public-exposure.md"))
     args = parser.parse_args()
@@ -149,8 +219,13 @@ def main() -> int:
         parser.error("provide an identifier or use --interactive")
 
     findings: list[Finding] = []
+    raw_dir = args.out.parent / "raw"
     for username in sorted(set(usernames)):
         findings += github_username(username) + search_links("username", username)
+        if args.maigret:
+            findings += maigret_username(username, raw_dir, args.maigret_top_sites, args.scan_timeout)
+        if args.sherlock:
+            findings += sherlock_username(username, raw_dir, args.scan_timeout, args.sherlock_site)
     for name in sorted(set(names)):
         findings += github_name(name) + openalex_name(name) + search_links("name", name)
     api_key = os.environ.get("HIBP_API_KEY")

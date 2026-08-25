@@ -27,6 +27,27 @@ search service.
 python scripts/audit_public_exposure.py --interactive
 ```
 
+To include username enumeration, enable it deliberately. Maigret is the broad
+collector; Sherlock is an optional second opinion. Both make requests to many
+third-party services, and a claimed username is only a candidate match.
+
+```bash
+python scripts/audit_public_exposure.py --interactive --maigret
+# Add Sherlock only when you want corroboration:
+python scripts/audit_public_exposure.py --interactive --maigret --sherlock
+```
+
+Maigret's default scope is the top 500 sites. Use a small bounded pass first:
+
+```bash
+python scripts/audit_public_exposure.py --username example_handle --maigret --maigret-top-sites 25
+# Or verify a particular service with Sherlock:
+python scripts/audit_public_exposure.py --username example_handle --sherlock --sherlock-site GitHub
+```
+
+Raw Maigret JSON and Sherlock output are retained under `reports/raw/` beside
+the generated report, which remains ignored by Git.
+
 Or pass values directly:
 
 ```bash
