@@ -92,14 +92,14 @@ def openalex_name(full_name: str) -> list[Finding]:
 
 def hibp_email(email: str, api_key: str | None) -> list[Finding]:
     if not api_key:
-        return [Finding("email", email, "Have I Been Pwned", "breach_check", "not_run", "", "", "https://haveibeenpwned.com/API/v3", "Set HIBP_API_KEY to enable; the email was not sent to HIBP.")]
+        return [Finding("email", email, "Have I Been Pwned", "breach_check", "not_run", "", "", "https://haveibeenpwned.com/API/v3", "Set HAVE_I_BEEN_PWNED_API_KEY to enable; the email was not sent to Have I Been Pwned.")]
     url = f"https://haveibeenpwned.com/api/v3/breachedaccount/{quote(email)}?truncateResponse=false"
     try:
         status, data = get_json(url, {"hibp-api-key": api_key})
     except RuntimeError as exc:
         return [Finding("email", email, "Have I Been Pwned", "breach_check", "error", "", "", "", str(exc))]
     if status == 404:
-        return [Finding("email", email, "Have I Been Pwned", "breach_check", "no_match", "high", "", "", "No breach records returned by HIBP.")]
+        return [Finding("email", email, "Have I Been Pwned", "breach_check", "no_match", "high", "", "", "No breach records returned by Have I Been Pwned.")]
     return [Finding("email", email, "Have I Been Pwned", "breach", "confirmed", "high", breach.get("Name", ""), breach.get("Domain", ""), f"breach_date={breach.get('BreachDate', '')}; data_classes={';'.join(breach.get('DataClasses', []))}") for breach in data]
 
 
@@ -200,7 +200,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--username", action="append", default=[], help="Known username; repeatable")
     parser.add_argument("--name", action="append", default=[], help="Full name; repeatable")
-    parser.add_argument("--email", action="append", default=[], help="Email to check with HIBP when configured; repeatable")
+    parser.add_argument("--email", action="append", default=[], help="Email to check with Have I Been Pwned when configured; repeatable")
     parser.add_argument("--interactive", action="store_true", help="Prompt for identifiers")
     parser.add_argument("--maigret", action="store_true", help="Run Maigret username scanning (makes requests to third-party services)")
     parser.add_argument("--sherlock", action="store_true", help="Run Sherlock as an additional username verifier (many third-party requests)")
@@ -228,7 +228,7 @@ def main() -> int:
             findings += sherlock_username(username, raw_dir, args.scan_timeout, args.sherlock_site)
     for name in sorted(set(names)):
         findings += github_name(name) + openalex_name(name) + search_links("name", name)
-    api_key = os.environ.get("HIBP_API_KEY")
+    api_key = os.environ.get("HAVE_I_BEEN_PWNED_API_KEY") or os.environ.get("HIBP_API_KEY")
     for email in sorted(set(emails)):
         findings += hibp_email(email, api_key) + search_links("email", email)
     write_csv(args.out, findings)
