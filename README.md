@@ -229,4 +229,10 @@ and other providers), payment trails, aliases, and subscriptions. Before closing
 anything, export data if needed, confirm the account is not a recovery path,
 and record the deletion date.
 
+[JustDeleteMe](https://justdeleteme.xyz/) is a useful companion at this stage:
+it is a directory of direct account-deletion links and notes about services
+that make deletion difficult. It can save time finding the correct setting, but
+still verify the target account and any export/recovery consequences yourself.
+It also links an [unofficial Android app on F-Droid](https://f-droid.org/en/packages/com.amanoteam.kurt/).
+
 See [docs/plan.md](docs/plan.md) for the broader cleanup plan.
