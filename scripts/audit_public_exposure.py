@@ -103,6 +103,45 @@ def hibp_email(email: str, api_key: str | None) -> list[Finding]:
     return [Finding("email", email, "Have I Been Pwned", "breach", "confirmed", "high", breach.get("Name", ""), breach.get("Domain", ""), f"breach_date={breach.get('BreachDate', '')}; data_classes={';'.join(breach.get('DataClasses', []))}") for breach in data]
 
 
+def mailaccess_report(report_path: Path) -> list[Finding]:
+    """Import a *local* MailAccess JSON export without invoking MailAccess.
+
+    MailAccess queries many public services when it runs. Keeping it as a
+    report import makes that separate, explicit, and auditable; every imported
+    item remains a candidate rather than an identity or account-existence fact.
+    """
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return [Finding("email", "", "MailAccess", "report_import", "error", "", "", "", f"Could not read local report {report_path.name}: {exc}")]
+    except json.JSONDecodeError as exc:
+        return [Finding("email", "", "MailAccess", "report_import", "error", "", "", "", f"Could not parse local report {report_path.name}: {exc}")]
+
+    if not isinstance(report, dict):
+        return [Finding("email", "", "MailAccess", "report_import", "error", "", "", "", f"Local report {report_path.name} is not a JSON object.")]
+
+    email = str(report.get("email") or "")
+    report_id = str(report.get("id") or report.get("investigation_id") or "unknown")
+    findings = report.get("findings")
+    if not isinstance(findings, list):
+        return [Finding("email", email, "MailAccess", "report_import", "error", "", "", "", f"Local report {report_path.name} has no findings list.")]
+
+    imported: list[Finding] = []
+    for item in findings:
+        if not isinstance(item, dict):
+            continue
+        module = str(item.get("module") or item.get("source") or item.get("module_name") or "MailAccess")
+        title = str(item.get("title") or item.get("name") or item.get("platform") or item.get("type") or module)
+        url = str(item.get("url") or item.get("link") or item.get("profile_url") or "")
+        detail = str(item.get("evidence") or item.get("detail") or item.get("description") or item.get("value") or "")
+        evidence = f"Imported from local MailAccess JSON ({report_path.name}; investigation={report_id}; module={module}). Treat as a lead and verify manually."
+        if detail:
+            evidence += f" Detail: {detail[:500]}"
+        imported.append(Finding("email", email, "MailAccess", "email_osint", "candidate", "low", title, url, evidence))
+
+    return imported or [Finding("email", email, "MailAccess", "report_import", "no_match", "", "", "", f"Local report {report_path.name} contained no importable findings; investigation={report_id}.")]
+
+
 def search_links(query_type: str, query: str) -> list[Finding]:
     quoted = quote(f'"{query}"')
     return [
@@ -204,6 +243,7 @@ def main() -> int:
     parser.add_argument("--interactive", action="store_true", help="Prompt for identifiers")
     parser.add_argument("--maigret", action="store_true", help="Run Maigret username scanning (makes requests to third-party services)")
     parser.add_argument("--sherlock", action="store_true", help="Run Sherlock as an additional username verifier (many third-party requests)")
+    parser.add_argument("--mailaccess-report", type=Path, action="append", default=[], help="Import an existing local MailAccess JSON export; does not invoke MailAccess or make requests")
     parser.add_argument("--sherlock-site", action="append", default=[], help="Restrict Sherlock to a site; repeatable")
     parser.add_argument("--maigret-top-sites", type=int, default=500, help="Maigret scope when --maigret is enabled (default: 500)")
     parser.add_argument("--scan-timeout", type=int, default=20, help="Per-site timeout for Maigret/Sherlock, in seconds (default: 20)")
@@ -215,8 +255,8 @@ def main() -> int:
         usernames += prompt_values("Usernames")
         names += prompt_values("Full names")
         emails += prompt_values("Emails")
-    if not any((usernames, names, emails)):
-        parser.error("provide an identifier or use --interactive")
+    if not any((usernames, names, emails, args.mailaccess_report)):
+        parser.error("provide an identifier, --mailaccess-report, or use --interactive")
 
     findings: list[Finding] = []
     raw_dir = args.out.parent / "raw"
@@ -231,6 +271,8 @@ def main() -> int:
     api_key = os.environ.get("HAVE_I_BEEN_PWNED_API_KEY") or os.environ.get("HIBP_API_KEY")
     for email in sorted(set(emails)):
         findings += hibp_email(email, api_key) + search_links("email", email)
+    for report_path in args.mailaccess_report:
+        findings += mailaccess_report(report_path)
     write_csv(args.out, findings)
     write_markdown(args.markdown, findings)
     print(f"Wrote {len(findings)} findings to {args.out} and {args.markdown}")
