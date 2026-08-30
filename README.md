@@ -19,6 +19,7 @@ It can:
 - optionally check an email against [Have I Been Pwned](https://haveibeenpwned.com/API/v3);
 - optionally enumerate public username profiles with [Maigret](https://github.com/soxoj/maigret)
   and [Sherlock](https://github.com/sherlock-project/sherlock).
+- optionally import a local [MailAccess](https://github.com/KatrielMoses/MailAccess) JSON report as a separate, reviewable email-OSINT evidence lane.
 
 It does not:
 
@@ -41,6 +42,11 @@ match as `candidate` until you verify it manually.
 - A [Have I Been Pwned](https://haveibeenpwned.com/) lookup sends the supplied
   email address to that service. It is disabled unless you provide
   `HAVE_I_BEEN_PWNED_API_KEY`.
+- MailAccess is **not** installed or run by this project. Its broad platform
+  sweep can contact many third-party services with an email-derived query. Run
+  it separately, only for addresses you are authorized to audit, then import
+  its local JSON export explicitly. Imported findings remain `candidate` leads,
+  never proof that an account belongs to you or still exists.
 
 ## Quick start
 
@@ -63,7 +69,7 @@ not substitutes for one another.
 |---|---|---|---|
 | 1. Mailbox inventory | Gmail Takeout `.mbox` | account, billing, reset, verification, and cancellation evidence | `reports/accounts.csv` / `.md` |
 | 2. Browser-login inventory | Firefox saved-logins CSV | domains and usernames with saved credentials | `reports/firefox-logins.csv` / `.md` |
-| 3. Public exposure | your chosen usernames, names, emails | public profiles, public academic/code candidates, breach records, review links | `reports/public-exposure.csv` / `.md` |
+| 3. Public exposure | your chosen usernames, names, emails, and optional local MailAccess JSON | public profiles, public academic/code candidates, breach records, email-OSINT leads, review links | `reports/public-exposure.csv` / `.md` |
 | 4. Triage | the reports above | keep, secure, export, delete, or investigate decisions | your private inventory |
 
 ### 1. Discover likely accounts from Gmail Takeout
@@ -195,6 +201,31 @@ HAVE_I_BEEN_PWNED_API_KEY='your-key' python scripts/audit_public_exposure.py \
 Without `HAVE_I_BEEN_PWNED_API_KEY`, the report records that
 [Have I Been Pwned](https://haveibeenpwned.com/) was not run and does not send
 the email address to that service.
+
+### 3b. Import a local MailAccess report (optional)
+
+MailAccess is deliberately a separate step. Install and run it according to
+its own documentation, using only an address you are authorized to audit. Do
+not run it as a persistent service for this workflow, and do not enable API
+keys, proxies, SMTP probing, domain harvesting, or a broad sweep merely to
+fill a spreadsheet.
+
+Export its completed investigation as JSON into the ignored `reports/raw/`
+directory, then import that **local file**:
+
+```bash
+mailaccess investigate you@example.org -o reports/raw/mailaccess-you-example.json
+
+python scripts/audit_public_exposure.py \
+  --mailaccess-report reports/raw/mailaccess-you-example.json
+```
+
+`--mailaccess-report` only reads the named local JSON file. It does not install
+or invoke MailAccess, start its web/API service, send an address anywhere, or
+need MailAccess/third-party API credentials. The imported rows preserve the
+report filename, investigation ID, and module name in their evidence field and
+are always labelled `candidate` with low confidence. Review them manually
+alongside the other evidence lanes.
 
 ## Reading the reports
 
