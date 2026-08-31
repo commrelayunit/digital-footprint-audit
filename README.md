@@ -1,5 +1,9 @@
 # Digital Footprint Audit
 
+[![Privacy: local-first](https://img.shields.io/badge/privacy-local--first-2f855a)](#privacy-and-safety)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab?logo=python&logoColor=white)](#quick-start)
+[![Reports ignored](https://img.shields.io/badge/generated%20reports-gitignored-6b7280)](#privacy-and-safety)
+
 Local tools for building a private inventory of online accounts and reviewing
 public exposure. The workflow combines evidence you already control (mailbox
 and browser-login exports) with opt-in checks for public profiles, breach
@@ -47,6 +51,10 @@ match as `candidate` until you verify it manually.
   it separately, only for addresses you are authorized to audit, then import
   its local JSON export explicitly. Imported findings remain `candidate` leads,
   never proof that an account belongs to you or still exists.
+
+If you want to replace everyday apps or services with more privacy-preserving
+options, browse [PrivacyPack](https://privacypack.org/). Treat its listings as
+starting points for your own security, privacy, and maintenance assessment.
 
 ## Quick start
 
