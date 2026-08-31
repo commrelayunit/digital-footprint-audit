@@ -30,6 +30,28 @@ class MailAccessReportImportTests(unittest.TestCase):
         self.assertIn("Treat as a lead", findings[0].evidence)
         self.assertIn("investigation-123", findings[0].evidence)
 
+    def test_imports_evidence_payload_and_drops_duplicate_module_summaries(self):
+        report = self.write_report({
+            "investigation_id": "investigation-456",
+            "email": "me@example.org",
+            "findings": [{"module": "github_commits"}, {"module": "github_commits"}],
+            "findings_by_module": {
+                "github_commits": [
+                    {"platform": "github_user", "metadata": {"username": "example", "profile_url": "https://github.com/example"}},
+                    {"platform": "github_user", "metadata": {"username": "example", "profile_url": "https://github.com/example"}},
+                ],
+                "dns_lookup": [{"metadata": {}}],
+            },
+        })
+        self.addCleanup(report.unlink)
+
+        findings = mailaccess_report(report)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].title, "github_user")
+        self.assertEqual(findings[0].url, "https://github.com/example")
+        self.assertIn("username=example", findings[0].evidence)
+
     def test_malformed_or_incomplete_reports_are_explicit_errors(self):
         malformed = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
         with malformed:
