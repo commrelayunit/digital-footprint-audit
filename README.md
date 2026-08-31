@@ -1,8 +1,6 @@
 # Digital Footprint Audit
 
-[![Privacy: local-first](https://img.shields.io/badge/privacy-local--first-2f855a)](#privacy-and-safety)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab?logo=python&logoColor=white)](#quick-start)
-[![Reports ignored](https://img.shields.io/badge/generated%20reports-gitignored-6b7280)](#privacy-and-safety)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 Local tools for building a private inventory of online accounts and reviewing
