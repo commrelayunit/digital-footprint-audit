@@ -139,9 +139,42 @@ format.
 
 ### 3. Check public exposure
 
-The interactive collector prompts for usernames, full names, and email
-addresses. It always performs the narrow GitHub/OpenAlex evidence checks and
-generates manual Google, Bing, and Common Crawl review links.
+Provide identifiers in either of two ways. Everything is supplied only on the
+command line or at the local prompt; results are written under ignored
+`reports/` paths.
+
+**Interactive (recommended for a first run):**
+
+```bash
+python scripts/audit_public_exposure.py --interactive
+```
+
+The script asks, in turn:
+
+```text
+Usernames (comma-separated; blank to skip):
+Full names (comma-separated; blank to skip):
+Emails (comma-separated; blank to skip):
+```
+
+For example, enter `alice, alice_dev` at the username prompt, `Alice Example`
+at the name prompt, and leave the email prompt blank if you do not want to
+include one.
+
+**Non-interactive:** pass repeatable `--username`, `--name`, and `--email`
+flags directly. This is useful for reproducible, deliberately scoped runs:
+
+```bash
+python scripts/audit_public_exposure.py \
+  --username alice --username alice_dev \
+  --name "Alice Example" \
+  --email alice@example.org
+```
+
+The collector always performs the narrow GitHub/OpenAlex evidence checks for
+the relevant identifier types and generates manual Google, Bing, and Common
+Crawl review links. An email address is sent to Have I Been Pwned **only** when
+you explicitly set its API key as described below.
 
 Start with Maigret over a bounded set of sites:
 
