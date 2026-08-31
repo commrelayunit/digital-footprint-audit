@@ -200,6 +200,27 @@ python scripts/audit_public_exposure.py \
   --interactive --maigret --maigret-top-sites 500 --sherlock
 ```
 
+**Sherlock-only runs:** `--sherlock` does not require `--maigret`; use it on
+its own when you want to skip Maigret entirely:
+
+```bash
+# Direct, one-username run
+python scripts/audit_public_exposure.py --username alice --sherlock
+
+# Prompt locally for one or more usernames, names, or emails
+python scripts/audit_public_exposure.py --interactive --sherlock
+```
+
+The interactive form still offers name and email prompts; leave them blank if
+you want a username-only run. To limit Sherlock to particular services, repeat
+`--sherlock-site`:
+
+```bash
+python scripts/audit_public_exposure.py \
+  --username alice --sherlock \
+  --sherlock-site GitHub --sherlock-site Reddit
+```
+
 This produces:
 
 - `reports/public-exposure.csv` — one finding per row, suitable for filtering;
