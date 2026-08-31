@@ -302,10 +302,12 @@ python scripts/audit_public_exposure.py \
 
 `--mailaccess-report` only reads the named local JSON file. It does not install
 or invoke MailAccess, start its web/API service, send an address anywhere, or
-need MailAccess/third-party API credentials. The imported rows preserve the
-report filename, investigation ID, and module name in their evidence field and
-are always labelled `candidate` with low confidence. Review them manually
-alongside the other evidence lanes.
+need MailAccess/third-party API credentials. The importer reads MailAccess's
+evidence payload (`findings_by_module`), not its module-run summary: empty run
+records are omitted and duplicate evidence is collapsed. Imported rows preserve
+the report filename, investigation ID, module name, available evidence URL, and
+compact details; they are always labelled `candidate` with low confidence.
+Review them manually alongside the other evidence lanes.
 
 ## Reading the reports
 
