@@ -178,12 +178,22 @@ you explicitly set its API key as described below.
 
 Start with Maigret over a bounded set of sites:
 
+#### Maigret — [GitHub repository](https://github.com/soxoj/maigret)
+
+Maigret is installed by this project's `pip install -r requirements.txt` step.
+It sends username queries to third-party sites, so begin with a deliberately
+small site limit:
+
 ```bash
 python scripts/audit_public_exposure.py \
   --interactive --maigret --maigret-top-sites 25
 ```
 
-For the complete username pass, include Sherlock too:
+#### Sherlock — [GitHub repository](https://github.com/sherlock-project/sherlock)
+
+Sherlock is also installed by `pip install -r requirements.txt`. It overlaps
+with Maigret, so use it as corroboration rather than proof. Add it only when a
+broader username pass is warranted:
 
 ```bash
 python scripts/audit_public_exposure.py \
@@ -246,18 +256,25 @@ the email address to that service.
 
 ### 3b. Import a local MailAccess report (optional)
 
-MailAccess is deliberately a separate step. Install and run it according to
-its own documentation, using only an address you are authorized to audit. Do
-not run it as a persistent service for this workflow, and do not enable API
-keys, proxies, SMTP probing, domain harvesting, or a broad sweep merely to
-fill a spreadsheet.
-
-Export its completed investigation as JSON into the ignored `reports/raw/`
-directory, then import that **local file**:
+MailAccess is deliberately separate from this project's dependencies. Install
+it into the same activated virtual environment before running the command:
 
 ```bash
+python -m pip install mailaccess
 mailaccess investigate you@example.org -o reports/raw/mailaccess-you-example.json
+```
 
+The `mailaccess` CLI starts and stops its own backend for a one-off
+investigation; this project does not require `mailaccess serve`. Use it only
+for an address you are authorized to audit. Do not enable API keys, proxies,
+SMTP probing, domain harvesting, or a broad sweep merely to fill a spreadsheet.
+See the upstream [MailAccess repository](https://github.com/KatrielMoses/MailAccess)
+for its full installation and operation documentation.
+
+The JSON report is written into the ignored `reports/raw/` directory. Import
+that **local file** with this project:
+
+```bash
 python scripts/audit_public_exposure.py \
   --mailaccess-report reports/raw/mailaccess-you-example.json
 ```
