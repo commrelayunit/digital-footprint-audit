@@ -306,7 +306,9 @@ need MailAccess/third-party API credentials. The importer reads MailAccess's
 evidence payload (`findings_by_module`), not its module-run summary: empty run
 records are omitted and duplicate evidence is collapsed. Imported rows preserve
 the report filename, investigation ID, module name, available evidence URL, and
-compact details; they are always labelled `candidate` with low confidence.
+compact details; they are always labelled `candidate` with low confidence. In
+the CSV, the `finding_type` identifies the specific MailAccess module and the
+`url` field is ready for review; Markdown presents the title as that link.
 Review them manually alongside the other evidence lanes.
 
 ## Reading the reports

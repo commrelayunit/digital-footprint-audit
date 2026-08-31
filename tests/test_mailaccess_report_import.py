@@ -27,7 +27,7 @@ class MailAccessReportImportTests(unittest.TestCase):
         self.assertEqual(findings[0].query, "me@example.org")
         self.assertEqual(findings[0].status, "candidate")
         self.assertEqual(findings[0].confidence, "low")
-        self.assertIn("Treat as a lead", findings[0].evidence)
+        self.assertIn("review manually", findings[0].evidence)
         self.assertIn("investigation-123", findings[0].evidence)
 
     def test_imports_evidence_payload_and_drops_duplicate_module_summaries(self):
@@ -48,9 +48,31 @@ class MailAccessReportImportTests(unittest.TestCase):
         findings = mailaccess_report(report)
 
         self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].title, "github_user")
+        self.assertEqual(findings[0].finding_type, "mailaccess/github_commits")
+        self.assertEqual(findings[0].title, "GitHub User: example")
         self.assertEqual(findings[0].url, "https://github.com/example")
         self.assertIn("username=example", findings[0].evidence)
+
+    def test_reads_legacy_wrapped_finding_data(self):
+        report = self.write_report({
+            "id": "investigation-789",
+            "email": "me@example.org",
+            "findings": [{
+                "module_name": "gravatar",
+                "data": {
+                    "platform": "gravatar_profile",
+                    "profile_url": "https://en.gravatar.com/example",
+                    "metadata": {"display_name": "Example Person"},
+                },
+            }],
+        })
+        self.addCleanup(report.unlink)
+
+        findings = mailaccess_report(report)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].title, "Gravatar Profile: Example Person")
+        self.assertEqual(findings[0].url, "https://en.gravatar.com/example")
 
     def test_malformed_or_incomplete_reports_are_explicit_errors(self):
         malformed = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
