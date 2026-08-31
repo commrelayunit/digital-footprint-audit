@@ -146,10 +146,13 @@ def mailaccess_report(report_path: Path) -> list[Finding]:
     imported: list[Finding] = []
     seen: set[tuple[str, str, str, str]] = set()
     for module, item in source_items:
-        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        url = _mailaccess_url(item, metadata)
-        title = _mailaccess_title(item, metadata, module)
-        detail = _mailaccess_detail(item, metadata)
+        # Older exports flatten evidence into a top-level ``data`` object;
+        # current ``findings_by_module`` exports place it directly on the row.
+        payload = item.get("data") if isinstance(item.get("data"), dict) else item
+        metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        url = _mailaccess_url(payload, metadata)
+        title = _mailaccess_title(payload, metadata, module)
+        detail = _mailaccess_detail(payload, metadata)
         # Summary rows have no source, identity, or evidence.  Suppressing
         # them is preferable to presenting a page of false leads.
         if not (url or detail):
@@ -158,10 +161,9 @@ def mailaccess_report(report_path: Path) -> list[Finding]:
         if signature in seen:
             continue
         seen.add(signature)
-        evidence = f"Imported from local MailAccess JSON ({report_path.name}; investigation={report_id}; module={module}). Treat as a lead and verify manually."
-        if detail:
-            evidence += f" Detail: {detail[:500]}"
-        imported.append(Finding("email", email, "MailAccess", "email_osint", "candidate", "low", title, url, evidence))
+        evidence = detail[:500]
+        evidence += f". MailAccess module={module}; investigation={report_id}; review manually."
+        imported.append(Finding("email", email, "MailAccess", f"mailaccess/{module}", "candidate", "low", title, url, evidence))
 
     return imported or [Finding("email", email, "MailAccess", "report_import", "no_match", "", "", "", f"Local report {report_path.name} contained no importable findings; investigation={report_id}.")]
 
@@ -177,19 +179,27 @@ def _mailaccess_url(item: dict[str, Any], metadata: dict[str, Any]) -> str:
 
 
 def _mailaccess_title(item: dict[str, Any], metadata: dict[str, Any], module: str) -> str:
+    platform = ""
     for container in (item, metadata):
-        for key in ("title", "platform", "name", "display_name", "username", "signal_type", "type"):
+        for key in ("title", "platform", "name", "display_name", "signal_type", "type"):
             value = container.get(key)
             if isinstance(value, str) and value.strip():
-                return value.strip()
-    return module
+                platform = value.strip()
+                break
+        if platform:
+            break
+    identity = str(metadata.get("username") or metadata.get("display_name") or item.get("username") or "").strip()
+    label = platform or module.replace("_", " ")
+    label = label.replace("_", " ").title()
+    label = label.replace("Github", "GitHub").replace("Gravatar", "Gravatar")
+    return f"{label}: {identity}" if identity else label
 
 
 def _mailaccess_detail(item: dict[str, Any], metadata: dict[str, Any]) -> str:
     """Keep compact, human-reviewable evidence while omitting run bookkeeping."""
     fields: list[str] = []
     for container in (item, metadata):
-        for key in ("evidence", "detail", "description", "value", "signal_type", "username", "display_name", "breach_name", "source"):
+        for key in ("evidence", "detail", "description", "value", "signal_type", "username", "display_name", "breach_name", "source", "status", "severity", "confidence"):
             value = container.get(key)
             if isinstance(value, (str, int, float)) and str(value).strip():
                 rendered = f"{key}={value}"
